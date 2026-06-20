@@ -8,9 +8,23 @@ from pydantic import BaseModel, Field
 
 
 class SandboxStatus(StrEnum):
+    STARTING = "STARTING"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
     ERROR = "ERROR"
+    MISSING = "MISSING"
+
+
+AGENT_SERVER = "AGENT_SERVER"
+VSCODE = "VSCODE"
+WORKER_1 = "WORKER_1"
+WORKER_2 = "WORKER_2"
+
+
+class ExposedUrl(BaseModel):
+    name: str
+    url: str
+    port: int
 
 
 class Sandbox(BaseModel):
@@ -19,6 +33,8 @@ class Sandbox(BaseModel):
     agent_server_url: str
     session_api_key: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    sandbox_spec_id: str | None = None
+    exposed_urls: list[ExposedUrl] | None = None
 
 
 class AppConversation(BaseModel):
@@ -39,6 +55,11 @@ class AppConversation(BaseModel):
 
 class AppConversationPage(BaseModel):
     items: list[AppConversation]
+    next_page_id: str | None = None
+
+
+class SandboxPage(BaseModel):
+    items: list[Sandbox]
     next_page_id: str | None = None
 
 

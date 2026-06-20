@@ -11,6 +11,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, sta
 from .auth import auth_middleware, authorize_websocket
 from .config import AppServerConfig
 from .models import (
+    AGENT_SERVER,
     AppConversation,
     AppConversationPage,
     AppConversationStartTask,
@@ -21,6 +22,7 @@ from .models import (
     normalize_uuid,
 )
 from .runtime import proxy_request, require_running, runtime_conversation_url, runtime_headers
+from .sandbox import DockerSandboxService, ExposedPort, SandboxSpec
 from .state import AppState
 from .temporary_settings import build_temporary_router
 
@@ -74,8 +76,25 @@ async def _start_runtime_conversation(
         return response.json()
 
 
-def create_app(config: AppServerConfig | None = None) -> FastAPI:
+def _build_sandbox_service(config: AppServerConfig):
+    if config.sandbox_provider != "docker":
+        return None
+    return DockerSandboxService(
+        specs=[SandboxSpec(id=config.docker_agent_server_image, command=["--port", "8000"])],
+        container_name_prefix=config.docker_container_name_prefix,
+        host_port=8000,
+        container_url_pattern=config.docker_container_url_pattern,
+        mounts=[],
+        exposed_ports=[ExposedPort(name=AGENT_SERVER, description="Agent server", container_port=8000)],
+        health_check_path="/health",
+        httpx_client=httpx.AsyncClient(timeout=config.request_timeout_seconds),
+        max_num_sandboxes=5,
+    )
+
+
+def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> FastAPI:
     config = config or AppServerConfig.from_env()
+    sandbox_service = sandbox_service if sandbox_service is not None else _build_sandbox_service(config)
     state = AppState(config.state_dir)
     app = FastAPI(title="Minimal OpenHands app_server")
     app.state.config = config
@@ -100,7 +119,11 @@ def create_app(config: AppServerConfig | None = None) -> FastAPI:
 
     @app.post("/api/v1/app-conversations")
     async def start_app_conversation(body: dict[str, Any] = Body(default_factory=dict)):
-        sandbox = _require_static_agent_server(config)
+        sandbox = (
+            await sandbox_service.start_sandbox(body.get("sandbox_spec_id"))
+            if sandbox_service is not None
+            else _require_static_agent_server(config)
+        )
         state.sandboxes[sandbox.id] = sandbox
         conversation_id = str(uuid.uuid4())
         payload = _build_start_payload(body, conversation_id)
@@ -163,20 +186,28 @@ def create_app(config: AppServerConfig | None = None) -> FastAPI:
         return AppSendMessageResponse(success=True, sandbox_status=sandbox.status)
 
     @app.post("/api/v1/sandboxes/{sandbox_id}/pause")
-    async def pause_sandbox(sandbox_id: str) -> Sandbox:
+    async def pause_sandbox(sandbox_id: str):
         sandbox = state.sandboxes.get(sandbox_id)
         if not sandbox:
             raise HTTPException(status_code=404, detail="unknown sandbox")
+        if sandbox_service is not None:
+            exists = await sandbox_service.pause_sandbox(sandbox_id)
+            if not exists:
+                raise HTTPException(status_code=404, detail="unknown sandbox")
         sandbox.status = SandboxStatus.PAUSED
-        return sandbox
+        return {"success": True, **sandbox.model_dump()}
 
     @app.post("/api/v1/sandboxes/{sandbox_id}/resume")
-    async def resume_sandbox(sandbox_id: str) -> Sandbox:
+    async def resume_sandbox(sandbox_id: str):
         sandbox = state.sandboxes.get(sandbox_id)
         if not sandbox:
             raise HTTPException(status_code=404, detail="unknown sandbox")
+        if sandbox_service is not None:
+            exists = await sandbox_service.resume_sandbox(sandbox_id)
+            if not exists:
+                raise HTTPException(status_code=404, detail="unknown sandbox")
         sandbox.status = SandboxStatus.RUNNING
-        return sandbox
+        return {"success": True, **sandbox.model_dump()}
 
     @app.post("/api/conversations/{conversation_id}/pause")
     async def pause_runtime(request: Request, conversation_id: str):

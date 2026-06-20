@@ -9,11 +9,15 @@ from pydantic import BaseModel, Field
 class AppServerConfig(BaseModel):
     session_api_keys: list[str] = Field(default_factory=list)
     state_dir: Path = Field(default=Path(".app-server-state"))
+    sandbox_provider: str = "static"
     static_agent_server_url: str | None = None
     static_agent_server_session_key: str | None = None
     public_base_url: str | None = None
     enable_websocket_gateway: bool = True
     request_timeout_seconds: float = 30.0
+    docker_agent_server_image: str = "ghcr.io/openhands/agent-server:1.22.1-python"
+    docker_container_name_prefix: str = "oh-agent-server-"
+    docker_container_url_pattern: str = "http://localhost:{port}"
 
     @classmethod
     def from_env(cls) -> AppServerConfig:
@@ -24,8 +28,14 @@ class AppServerConfig(BaseModel):
                 keys.append(value)
         return cls(
             session_api_keys=keys,
+            sandbox_provider=os.environ.get("APP_SERVER_SANDBOX_PROVIDER", "static"),
             state_dir=Path(os.environ.get("APP_SERVER_STATE_DIR", ".app-server-state")),
             static_agent_server_url=os.environ.get("AGENT_SERVER_URL"),
+            docker_agent_server_image=os.environ.get(
+                "AGENT_SERVER_IMAGE", "ghcr.io/openhands/agent-server:1.22.1-python"
+            ),
+            docker_container_name_prefix=os.environ.get("APP_SERVER_DOCKER_NAME_PREFIX", "oh-agent-server-"),
+            docker_container_url_pattern=os.environ.get("SANDBOX_CONTAINER_URL_PATTERN", "http://localhost:{port}"),
             static_agent_server_session_key=os.environ.get("AGENT_SERVER_SESSION_API_KEY")
             or os.environ.get("RUNTIME_SESSION_API_KEY"),
             public_base_url=os.environ.get("APP_SERVER_PUBLIC_BASE_URL"),

@@ -29,6 +29,19 @@ python -m uvicorn app_server.app:create_app --factory --host 0.0.0.0 --port 8000
 
 Use `X-Session-API-Key: app-secret` when calling app_server. app_server uses `AGENT_SERVER_SESSION_API_KEY` when it calls the sandbox-hosted agent-server.
 
+Run with Docker sandbox orchestration instead of a pre-existing runtime:
+
+```bash
+SESSION_API_KEY=app-secret \
+APP_SERVER_SANDBOX_PROVIDER=docker \
+AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:1.22.1-python \
+SANDBOX_CONTAINER_URL_PATTERN='http://localhost:{port}' \
+python -m uvicorn app_server.app:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+In Docker mode, `POST /api/v1/app-conversations` creates a new agent-server container, injects `OH_SESSION_API_KEYS_0`, maps the agent-server port, stores the resulting sandbox metadata, waits through the normal app_server proxy/gateway paths, and then starts the runtime conversation.
+
+
 ## Implemented surface
 
 - Health/status: `/alive`, `/health`, `/ready`, `/server_info`

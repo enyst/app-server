@@ -21,9 +21,10 @@ Agent Canvas registers an app_server backend. app_server authenticates with a se
 1. Config and auth dependencies.
 2. In-memory/file-backed stores for sandboxes, conversations, start tasks, temporary settings/secrets.
 3. Static sandbox provider for a pre-existing agent-server URL/session key.
-4. App-conversation router that forwards `StartConversationRequest` payloads to agent-server.
-5. Proxy routers and WebSocket tunnels.
-6. CI/doc polish and final validation.
+4. Docker sandbox provider adapted from OpenHands/OpenHands non-enterprise Docker sandbox service: container metadata translation, session-key injection, port mapping, search/pagination, get-by-session-key, pause/resume/delete.
+5. App-conversation router that forwards `StartConversationRequest` payloads to agent-server.
+6. Proxy routers and WebSocket tunnels.
+7. CI/doc polish and final validation.
 
 ## Explicit non-goals
 
