@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 from collections.abc import Callable
@@ -233,6 +234,22 @@ class DockerSandboxService:
         sandbox = await self._container_to_sandbox(container)
         assert sandbox is not None
         return sandbox
+
+
+    async def wait_for_sandbox_running(
+        self,
+        sandbox_id: str,
+        timeout_seconds: float = 60.0,
+        poll_interval_seconds: float = 1.0,
+    ) -> Sandbox:
+        deadline = asyncio.get_running_loop().time() + timeout_seconds
+        while True:
+            sandbox = await self.get_sandbox(sandbox_id)
+            if sandbox and sandbox.status == SandboxStatus.RUNNING:
+                return sandbox
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError(f"Sandbox {sandbox_id} did not become RUNNING")
+            await asyncio.sleep(poll_interval_seconds)
 
     async def resume_sandbox(self, sandbox_id: str) -> bool:
         if not sandbox_id.startswith(self.container_name_prefix):

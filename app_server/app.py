@@ -176,6 +176,8 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             if sandbox_service is not None
             else _require_static_agent_server(config)
         )
+        if sandbox_service is not None and hasattr(sandbox_service, "wait_for_sandbox_running"):
+            sandbox = await sandbox_service.wait_for_sandbox_running(sandbox.id)
         state.sandboxes[sandbox.id] = sandbox
         conversation_id = str(uuid.uuid4())
         payload = _build_start_payload(body, conversation_id)

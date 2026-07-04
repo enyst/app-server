@@ -212,3 +212,31 @@ async def test_lifecycle_methods(service):
 
     service.docker_client.containers.get.side_effect = NotFound("missing")
     assert await service.pause_sandbox("oh-test-missing") is False
+
+
+async def test_wait_for_sandbox_running_polls_until_running(service):
+    from app_server.models import Sandbox
+
+    calls = []
+
+    async def fake_get_sandbox(sandbox_id: str):
+        calls.append(sandbox_id)
+        if len(calls) == 1:
+            return Sandbox(
+                id=sandbox_id,
+                status=SandboxStatus.STARTING,
+                agent_server_url="",
+            )
+        return Sandbox(
+            id=sandbox_id,
+            status=SandboxStatus.RUNNING,
+            agent_server_url="http://localhost:12345",
+        )
+
+    service.get_sandbox = fake_get_sandbox
+    sandbox = await service.wait_for_sandbox_running(
+        "oh-test-abc", timeout_seconds=1, poll_interval_seconds=0
+    )
+    assert sandbox.status == SandboxStatus.RUNNING
+    assert calls == ["oh-test-abc", "oh-test-abc"]
+

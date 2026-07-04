@@ -113,3 +113,54 @@ def test_sandbox_spec_route_compatibility(client, authed_headers):
 
     too_many = client.get("/api/v1/sandbox-specs", params=[("id", str(i)) for i in range(101)], headers=authed_headers)
     assert too_many.status_code == 400
+
+
+class WaitingSandboxProvider:
+    def __init__(self, runtime_url: str):
+        self.runtime_url = runtime_url
+        self.waited_for = None
+
+    async def start_sandbox(self, sandbox_spec_id=None, sandbox_id=None):
+        from app_server.models import Sandbox, SandboxStatus
+
+        return Sandbox(id="waiting-sandbox", agent_server_url="", status=SandboxStatus.STARTING)
+
+    async def wait_for_sandbox_running(self, sandbox_id: str):
+        from app_server.models import Sandbox
+
+        self.waited_for = sandbox_id
+        return Sandbox(
+            id=sandbox_id,
+            agent_server_url=self.runtime_url,
+            session_api_key="runtime-secret",
+        )
+
+
+def test_app_conversation_waits_for_sandbox_readiness(
+    fake_agent_server, tmp_path, authed_headers
+):
+    from fastapi.testclient import TestClient
+
+    from app_server.app import create_app
+    from app_server.config import AppServerConfig
+
+    provider = WaitingSandboxProvider(fake_agent_server.base_url)
+    app = create_app(
+        AppServerConfig(session_api_keys=["app-secret"], state_dir=tmp_path),
+        sandbox_service=provider,
+    )
+    with TestClient(app) as app_client:
+        response = app_client.post(
+            "/api/v1/app-conversations",
+            json={
+                "initial_message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hi"}],
+                }
+            },
+            headers=authed_headers,
+        )
+        assert response.status_code == 200
+        assert provider.waited_for == "waiting-sandbox"
+        assert response.json()["sandbox_id"] == "waiting-sandbox"
+
