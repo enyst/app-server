@@ -62,3 +62,46 @@ def test_send_message_uses_app_server_gateway(client, authed_headers, fake_agent
     assert response.status_code == 200
     assert fake_agent_server.state.received[-1]["path"] == "events"
     assert fake_agent_server.state.received[-1]["body"]["content"][0]["text"] == "follow up"
+
+
+def test_app_conversation_state_persists_across_app_restart(
+    fake_agent_server, tmp_path, authed_headers
+):
+    from fastapi.testclient import TestClient
+
+    from app_server.app import create_app
+    from app_server.config import AppServerConfig
+
+    config = AppServerConfig(
+        session_api_keys=["app-secret"],
+        state_dir=tmp_path,
+        static_agent_server_url=fake_agent_server.base_url,
+        static_agent_server_session_key="runtime-secret",
+    )
+    with TestClient(create_app(config)) as first_client:
+        task = first_client.post(
+            "/api/v1/app-conversations", json=_start_payload(), headers=authed_headers
+        ).json()
+        conversation_id = task["app_conversation_id"]
+        sandbox_id = task["sandbox_id"]
+
+    with TestClient(create_app(config)) as second_client:
+        conversation = second_client.get(
+            "/api/v1/app-conversations",
+            params=[("ids", conversation_id)],
+            headers=authed_headers,
+        ).json()[0]
+        assert conversation["id"] == conversation_id
+        sandbox = second_client.get(
+            "/api/v1/sandboxes",
+            params=[("id", sandbox_id)],
+            headers=authed_headers,
+        ).json()[0]
+        assert sandbox["id"] == sandbox_id
+        task_after_restart = second_client.get(
+            "/api/v1/app-conversations/start-tasks",
+            params=[("ids", task["id"])],
+            headers=authed_headers,
+        ).json()[0]
+        assert task_after_restart["app_conversation_id"] == conversation_id
+

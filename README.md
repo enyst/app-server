@@ -41,6 +41,9 @@ python -m uvicorn app_server.app:create_app --factory --host 0.0.0.0 --port 8000
 
 In Docker mode, `POST /api/v1/app-conversations` creates a new agent-server container, injects `OH_SESSION_API_KEYS_0`, maps the agent-server port, waits for the sandbox to report `RUNNING`, stores the resulting sandbox metadata, and then starts the runtime conversation.
 
+Runtime state is file-backed under `APP_SERVER_STATE_DIR` (default `.app-server-state`): app-conversation records, start tasks, and known sandbox metadata are restored when the process restarts. Docker mode can also rediscover live containers through the sandbox provider's Docker search APIs.
+
+
 
 ## Implemented surface
 

@@ -167,6 +167,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             else _require_static_agent_server(config)
         )
         state.sandboxes[sandbox.id] = sandbox
+        state.save_runtime_state()
         return sandbox
 
     @app.post("/api/v1/app-conversations")
@@ -179,6 +180,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
         if sandbox_service is not None and hasattr(sandbox_service, "wait_for_sandbox_running"):
             sandbox = await sandbox_service.wait_for_sandbox_running(sandbox.id)
         state.sandboxes[sandbox.id] = sandbox
+        state.save_runtime_state()
         conversation_id = str(uuid.uuid4())
         payload = _build_start_payload(body, conversation_id)
         runtime = await _start_runtime_conversation(config, sandbox, payload)
@@ -204,6 +206,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             request=body,
         )
         state.tasks[task.id] = task
+        state.save_runtime_state()
         return task
 
     @app.get("/api/v1/app-conversations/search", response_model=AppConversationPage)
@@ -249,6 +252,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             if not exists:
                 raise HTTPException(status_code=404, detail="unknown sandbox")
         sandbox.status = SandboxStatus.PAUSED
+        state.save_runtime_state()
         return {"success": True, **sandbox.model_dump()}
 
     @app.post("/api/v1/sandboxes/{sandbox_id}/resume")
@@ -261,6 +265,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             if not exists:
                 raise HTTPException(status_code=404, detail="unknown sandbox")
         sandbox.status = SandboxStatus.RUNNING
+        state.save_runtime_state()
         return {"success": True, **sandbox.model_dump()}
 
     @app.delete("/api/v1/sandboxes/{sandbox_id}")
@@ -272,6 +277,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
         elif sandbox_id not in state.sandboxes:
             raise HTTPException(status_code=404, detail="unknown sandbox")
         state.sandboxes.pop(sandbox_id, None)
+        state.save_runtime_state()
         return {"success": True}
 
     @app.post("/api/conversations/{conversation_id}/pause")

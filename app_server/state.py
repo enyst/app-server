@@ -11,11 +11,38 @@ class AppState:
     def __init__(self, state_dir: Path):
         self.state_dir = state_dir
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        self.sandboxes: dict[str, Sandbox] = {}
-        self.conversations: dict[str, AppConversation] = {}
-        self.tasks: dict[str, AppConversationStartTask] = {}
+        self._sandboxes_path = self.state_dir / "sandboxes.json"
+        self._conversations_path = self.state_dir / "conversations.json"
+        self._tasks_path = self.state_dir / "start_tasks.json"
+        self.sandboxes: dict[str, Sandbox] = self._load_models(self._sandboxes_path, Sandbox)
+        self.conversations: dict[str, AppConversation] = self._load_models(
+            self._conversations_path, AppConversation
+        )
+        self.tasks: dict[str, AppConversationStartTask] = self._load_models(
+            self._tasks_path, AppConversationStartTask
+        )
         self._settings_path = self.state_dir / "settings.json"
         self._secrets_path = self.state_dir / "secrets.json"
+
+    def _load_models(self, path: Path, model_type):
+        if not path.exists():
+            return {}
+        raw = json.loads(path.read_text())
+        return {key: model_type.model_validate(value) for key, value in raw.items()}
+
+    def _save_models(self, path: Path, values: dict[str, Any]) -> None:
+        path.write_text(
+            json.dumps(
+                {key: value.model_dump(mode="json") for key, value in values.items()},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+
+    def save_runtime_state(self) -> None:
+        self._save_models(self._sandboxes_path, self.sandboxes)
+        self._save_models(self._conversations_path, self.conversations)
+        self._save_models(self._tasks_path, self.tasks)
 
     def settings(self) -> dict[str, Any]:
         if not self._settings_path.exists():
