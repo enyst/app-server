@@ -29,6 +29,11 @@ python -m uvicorn app_server.app:create_app --factory --host 0.0.0.0 --port 8000
 
 Use `X-Session-API-Key: app-secret` when calling app_server. app_server uses `AGENT_SERVER_SESSION_API_KEY` when it calls the sandbox-hosted agent-server.
 
+## Auth model
+
+Self-hosted Agent Canvas can use a normal app-server session key. Send it as `X-Session-API-Key`; `Authorization: Bearer <same-key>` is also accepted as a compatibility bridge for current Agent Canvas cloud-style backend calls. The intended Agent Canvas shape is app_server protocol routes with session-key auth; current Agent Canvas may still need a backend kind/auth-mode split to express that cleanly.
+
+
 Run with Docker sandbox orchestration instead of a pre-existing runtime:
 
 ```bash

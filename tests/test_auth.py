@@ -12,6 +12,17 @@ def test_session_key_allows_api_routes(client, authed_headers):
     assert response.json() == {"items": [], "next_page_id": None}
 
 
+
+def test_bearer_key_also_allows_api_routes(client):
+    response = client.get(
+        "/api/v1/app-conversations/search",
+        headers={"Authorization": "Bearer app-secret"},
+    )
+    assert response.status_code == 200
+
+    assert response.json() == {"items": [], "next_page_id": None}
+
+
 def test_health_routes_are_public(client):
     assert client.get("/health").status_code == 200
     assert client.get("/ready").status_code == 200
