@@ -76,11 +76,15 @@ async def _start_runtime_conversation(
         return response.json()
 
 
+def _sandbox_specs(config: AppServerConfig) -> list[SandboxSpec]:
+    return [SandboxSpec(id=config.docker_agent_server_image, command=["--port", "8000"])]
+
+
 def _build_sandbox_service(config: AppServerConfig):
     if config.sandbox_provider != "docker":
         return None
     return DockerSandboxService(
-        specs=[SandboxSpec(id=config.docker_agent_server_image, command=["--port", "8000"])],
+        specs=_sandbox_specs(config),
         container_name_prefix=config.docker_container_name_prefix,
         host_port=8000,
         container_url_pattern=config.docker_container_url_pattern,
@@ -116,6 +120,54 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             "app": "minimal-openhands-app-server",
             "websocket_gateway": config.enable_websocket_gateway,
         }
+
+
+    @app.get("/api/v1/sandbox-specs/search")
+    async def search_sandbox_specs() -> dict[str, Any]:
+        return {"items": [spec.model_dump() for spec in _sandbox_specs(config)], "next_page_id": None}
+
+    @app.get("/api/v1/sandbox-specs")
+    async def batch_get_sandbox_specs(id: list[str] = Query(default_factory=list)):
+        if len(id) > 100:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot request more than 100 sandbox specs at once, got {len(id)}",
+            )
+        specs = {spec.id: spec for spec in _sandbox_specs(config)}
+        return [specs.get(spec_id) for spec_id in id]
+
+    @app.get("/api/v1/sandboxes/search")
+    async def search_sandboxes() -> dict[str, Any]:
+        if sandbox_service is not None and hasattr(sandbox_service, "search_sandboxes"):
+            return (await sandbox_service.search_sandboxes()).model_dump()
+        return {"items": [sandbox.model_dump() for sandbox in state.sandboxes.values()], "next_page_id": None}
+
+    @app.get("/api/v1/sandboxes")
+    async def batch_get_sandboxes(id: list[str] = Query(default_factory=list)):
+        if len(id) > 100:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot request more than 100 sandboxes at once, got {len(id)}",
+            )
+        result = []
+        for sandbox_id in id:
+            if sandbox_id in state.sandboxes:
+                result.append(state.sandboxes[sandbox_id])
+            elif sandbox_service is not None and hasattr(sandbox_service, "get_sandbox"):
+                result.append(await sandbox_service.get_sandbox(sandbox_id))
+            else:
+                result.append(None)
+        return result
+
+    @app.post("/api/v1/sandboxes")
+    async def start_sandbox(sandbox_spec_id: str | None = None):
+        sandbox = (
+            await sandbox_service.start_sandbox(sandbox_spec_id)
+            if sandbox_service is not None
+            else _require_static_agent_server(config)
+        )
+        state.sandboxes[sandbox.id] = sandbox
+        return sandbox
 
     @app.post("/api/v1/app-conversations")
     async def start_app_conversation(body: dict[str, Any] = Body(default_factory=dict)):
@@ -208,6 +260,17 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
                 raise HTTPException(status_code=404, detail="unknown sandbox")
         sandbox.status = SandboxStatus.RUNNING
         return {"success": True, **sandbox.model_dump()}
+
+    @app.delete("/api/v1/sandboxes/{sandbox_id}")
+    async def delete_sandbox(sandbox_id: str):
+        if sandbox_service is not None and hasattr(sandbox_service, "delete_sandbox"):
+            exists = await sandbox_service.delete_sandbox(sandbox_id)
+            if not exists:
+                raise HTTPException(status_code=404, detail="unknown sandbox")
+        elif sandbox_id not in state.sandboxes:
+            raise HTTPException(status_code=404, detail="unknown sandbox")
+        state.sandboxes.pop(sandbox_id, None)
+        return {"success": True}
 
     @app.post("/api/conversations/{conversation_id}/pause")
     async def pause_runtime(request: Request, conversation_id: str):

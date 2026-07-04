@@ -75,3 +75,41 @@ def test_app_conversation_uses_sandbox_provider(fake_agent_server, tmp_path, aut
             "/api/v1/sandboxes/provider-sandbox/resume", headers=authed_headers
         ).json()["success"] is True
         assert provider.resumed == ["provider-sandbox"]
+
+
+def test_sandbox_route_compatibility(client, authed_headers):
+    created = client.post("/api/v1/sandboxes", headers=authed_headers)
+    assert created.status_code == 200
+    sandbox = created.json()
+    sandbox_id = sandbox["id"]
+
+    search = client.get("/api/v1/sandboxes/search", headers=authed_headers)
+    assert search.status_code == 200
+    assert any(item["id"] == sandbox_id for item in search.json()["items"])
+
+    batch = client.get("/api/v1/sandboxes", params=[("id", sandbox_id)], headers=authed_headers)
+    assert batch.status_code == 200
+    assert batch.json()[0]["id"] == sandbox_id
+
+    too_many = client.get("/api/v1/sandboxes", params=[("id", str(i)) for i in range(101)], headers=authed_headers)
+    assert too_many.status_code == 400
+
+    deleted = client.delete(f"/api/v1/sandboxes/{sandbox_id}", headers=authed_headers)
+    assert deleted.status_code == 200
+    assert deleted.json() == {"success": True}
+
+
+def test_sandbox_spec_route_compatibility(client, authed_headers):
+    search = client.get("/api/v1/sandbox-specs/search", headers=authed_headers)
+    assert search.status_code == 200
+    specs = search.json()["items"]
+    assert specs
+    spec_id = specs[0]["id"]
+    assert "working_dir" in specs[0]
+
+    batch = client.get("/api/v1/sandbox-specs", params=[("id", spec_id)], headers=authed_headers)
+    assert batch.status_code == 200
+    assert batch.json()[0]["id"] == spec_id
+
+    too_many = client.get("/api/v1/sandbox-specs", params=[("id", str(i)) for i in range(101)], headers=authed_headers)
+    assert too_many.status_code == 400

@@ -51,9 +51,15 @@ In Docker mode, `POST /api/v1/app-conversations` creates a new agent-server cont
   - `GET /api/v1/app-conversations?ids=...`
   - `GET /api/v1/app-conversations/start-tasks?ids=...`
   - `POST /api/v1/app-conversations/{id}/send-message`
-- Sandbox control:
+- Sandbox specs/control:
+  - `GET /api/v1/sandbox-specs/search`
+  - `GET /api/v1/sandbox-specs?id=...`
+  - `GET /api/v1/sandboxes/search`
+  - `GET /api/v1/sandboxes?id=...`
+  - `POST /api/v1/sandboxes`
   - `POST /api/v1/sandboxes/{id}/pause`
   - `POST /api/v1/sandboxes/{id}/resume`
+  - `DELETE /api/v1/sandboxes/{id}`
 - Agent-server proxy routes:
   - `POST /api/conversations/{id}/events`
   - `GET /api/conversations/{id}/events/count`
