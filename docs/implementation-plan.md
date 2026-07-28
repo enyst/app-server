@@ -26,9 +26,40 @@ Agent Canvas registers an app_server backend. app_server authenticates with a se
 6. Proxy routers and WebSocket tunnels.
 7. CI/doc polish and final validation.
 
+## Settings ownership
+
+Settings started out as a deliberately opaque compatibility shim, on the
+assumption that Agent Canvas + agent-server profiles would own them. That plan
+is superseded: **app_server owns user settings and secrets.**
+
+The reason is that nothing else can. app_server is what calls the agent-server's
+`POST /api/conversations`, so it is the only component positioned to decide
+which LLM, MCP servers, condenser, and conversation limits a run uses. Storing
+settings as opaque blobs meant the agent only ran with whatever configuration
+the client happened to put in the start request — a backend that could not work
+on its own.
+
+Concretely:
+
+- `Settings.agent_settings` and `Settings.conversation_settings` are the SDK's
+  own models, so persisted settings are already in the shape the agent-server
+  consumes. `ConversationSettings.create_request(StartConversationRequest)`
+  builds the start payload; app_server does not hand-roll that JSON.
+- This makes `openhands-sdk` a hard dependency, pinned in lockstep with the
+  default agent-server image tag. The SDK is the single source of truth for the
+  wire format and for the settings schema served to the UI.
+- Secrets are owned here too: custom secrets become conversation environment
+  variables, and git provider tokens are stored for repository access.
+- MCP credentials survive the `GET -> edit -> POST` round trip
+  (`app_server/mcp_secrets.py`). The GET response strips secret values, so
+  without that merge a settings save would erase every configured MCP
+  credential.
+
 ## Explicit non-goals
 
 - No old OpenHands frontend.
 - No SaaS org/billing/account flows.
-- No canonical user settings/secrets ownership in app_server beyond temporary compatibility routes.
+- No org- or instance-scoped settings, marketplace composition, or Agent
+  Profiles — those are cloud concepts that assume multiple users and orgs.
+  app_server serves a single self-hosted user.
 - No reimplementation of agent execution.

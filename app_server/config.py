@@ -15,7 +15,7 @@ class AppServerConfig(BaseModel):
     public_base_url: str | None = None
     enable_websocket_gateway: bool = True
     request_timeout_seconds: float = 30.0
-    docker_agent_server_image: str = "ghcr.io/openhands/agent-server:1.22.1-python"
+    docker_agent_server_image: str = "ghcr.io/openhands/agent-server:1.38.0-python"
     docker_container_name_prefix: str = "oh-agent-server-"
     docker_container_url_pattern: str = "http://localhost:{port}"
 
@@ -32,13 +32,12 @@ class AppServerConfig(BaseModel):
             state_dir=Path(os.environ.get("APP_SERVER_STATE_DIR", ".app-server-state")),
             static_agent_server_url=os.environ.get("AGENT_SERVER_URL"),
             docker_agent_server_image=os.environ.get(
-                "AGENT_SERVER_IMAGE", "ghcr.io/openhands/agent-server:1.22.1-python"
+                "AGENT_SERVER_IMAGE", "ghcr.io/openhands/agent-server:1.38.0-python"
             ),
             docker_container_name_prefix=os.environ.get("APP_SERVER_DOCKER_NAME_PREFIX", "oh-agent-server-"),
             docker_container_url_pattern=os.environ.get("SANDBOX_CONTAINER_URL_PATTERN", "http://localhost:{port}"),
             static_agent_server_session_key=os.environ.get("AGENT_SERVER_SESSION_API_KEY")
             or os.environ.get("RUNTIME_SESSION_API_KEY"),
             public_base_url=os.environ.get("APP_SERVER_PUBLIC_BASE_URL"),
-            enable_websocket_gateway=os.environ.get("ENABLE_WEBSOCKET_GATEWAY", "true").lower()
-            in {"1", "true", "yes"},
+            enable_websocket_gateway=os.environ.get("ENABLE_WEBSOCKET_GATEWAY", "true").lower() in {"1", "true", "yes"},
         )

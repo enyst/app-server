@@ -5,9 +5,18 @@ from pathlib import Path
 from typing import Any
 
 from .models import AppConversation, AppConversationStartTask, Sandbox
+from .settings import Settings
+from .user_secrets import Secrets
 
 
 class AppState:
+    """File-backed persistence for everything app_server owns.
+
+    Runtime state (sandboxes, conversations, start tasks) is held in memory and
+    flushed on change; settings and secrets are read through on each access so
+    an external edit to the state dir is picked up without a restart.
+    """
+
     def __init__(self, state_dir: Path):
         self.state_dir = state_dir
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -15,12 +24,8 @@ class AppState:
         self._conversations_path = self.state_dir / "conversations.json"
         self._tasks_path = self.state_dir / "start_tasks.json"
         self.sandboxes: dict[str, Sandbox] = self._load_models(self._sandboxes_path, Sandbox)
-        self.conversations: dict[str, AppConversation] = self._load_models(
-            self._conversations_path, AppConversation
-        )
-        self.tasks: dict[str, AppConversationStartTask] = self._load_models(
-            self._tasks_path, AppConversationStartTask
-        )
+        self.conversations: dict[str, AppConversation] = self._load_models(self._conversations_path, AppConversation)
+        self.tasks: dict[str, AppConversationStartTask] = self._load_models(self._tasks_path, AppConversationStartTask)
         self._settings_path = self.state_dir / "settings.json"
         self._secrets_path = self.state_dir / "secrets.json"
 
@@ -44,28 +49,25 @@ class AppState:
         self._save_models(self._conversations_path, self.conversations)
         self._save_models(self._tasks_path, self.tasks)
 
-    def settings(self) -> dict[str, Any]:
+    # ── Settings ────────────────────────────────────────────────────
+
+    def load_settings(self) -> Settings | None:
+        """Persisted settings, or None if the user has never saved any."""
         if not self._settings_path.exists():
-            return {"agent_settings": {}, "conversation_settings": {}, "app_preferences": {}}
-        return json.loads(self._settings_path.read_text())
+            return None
+        return Settings.model_validate(json.loads(self._settings_path.read_text()))
 
-    def save_settings(self, data: dict[str, Any]) -> None:
-        self._settings_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+    def save_settings(self, settings: Settings) -> None:
+        # expose_secrets: this file *is* the durable store, so masked values
+        # would overwrite the real credentials with "**********".
+        self._settings_path.write_text(settings.model_dump_json(indent=2, context={"expose_secrets": True}))
 
-    def secrets(self) -> dict[str, dict[str, str | None]]:
+    # ── Secrets ─────────────────────────────────────────────────────
+
+    def load_secrets(self) -> Secrets:
         if not self._secrets_path.exists():
-            return {}
-        return json.loads(self._secrets_path.read_text())
+            return Secrets()
+        return Secrets.model_validate(json.loads(self._secrets_path.read_text()))
 
-    def save_secrets(self, data: dict[str, dict[str, str | None]]) -> None:
-        self._secrets_path.write_text(json.dumps(data, indent=2, sort_keys=True))
-
-
-def deep_merge(base: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in diff.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
+    def save_secrets(self, secrets: Secrets) -> None:
+        self._secrets_path.write_text(secrets.model_dump_json(indent=2, context={"expose_secrets": True}))

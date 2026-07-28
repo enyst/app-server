@@ -39,7 +39,7 @@ Run with Docker sandbox orchestration instead of a pre-existing runtime:
 ```bash
 SESSION_API_KEY=app-secret \
 APP_SERVER_SANDBOX_PROVIDER=docker \
-AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:1.22.1-python \
+AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:1.38.0-python \
 SANDBOX_CONTAINER_URL_PATTERN='http://localhost:{port}' \
 python -m uvicorn app_server.app:create_app --factory --host 0.0.0.0 --port 8000
 ```
@@ -82,13 +82,37 @@ Runtime state is file-backed under `APP_SERVER_STATE_DIR` (default `.app-server-
   - `WS /ws/events/{id}` -> runtime `/sockets/events/{id}`
   - `WS /ws/bash-events/{id}` -> runtime `/sockets/bash-events`
 
-## Temporary settings/secrets compatibility
+## Settings
 
-`app_server/temporary_settings.py` intentionally contains a `TEMPORARY` comment. These routes exist so current Agent Canvas cloud-style callers can round-trip settings while the proper Agent Canvas-owned per-backend profile/settings store is built:
+app_server owns user settings and secrets, and builds every conversation from them. `agent_settings` and `conversation_settings` are stored as the SDK's own models, so a saved setting is already in the shape agent-server consumes: conversation start turns them into a `StartConversationRequest` via `ConversationSettings.create_request` rather than hand-rolled JSON.
+
+That makes `openhands-sdk` a hard dependency, pinned in lockstep with the default agent-server image tag. Bump both together.
+
+```bash
+# Configure an LLM before starting conversations
+curl -X POST localhost:8000/api/v1/settings \
+  -H 'X-Session-API-Key: app-secret' -H 'Content-Type: application/json' \
+  -d '{"agent_settings_diff": {"llm": {"model": "anthropic/claude-sonnet-4-5", "api_key": "sk-..."}}}'
+```
+
+Notes:
+
+- Writes are partial: `agent_settings_diff` and `conversation_settings_diff` deep-merge onto what is stored, so saving one settings page never clobbers another's fields. Sending the legacy nested `agent_settings` / `conversation_settings` keys is rejected with a 400.
+- Secret values are never echoed. `GET /api/v1/settings` nulls `llm.api_key` and strips MCP credentials, reporting `llm_api_key_set` instead. A `GET -> edit -> POST` round trip preserves the stored secrets.
+- `POST /api/v1/app-conversations` returns 400 if no LLM is configured, before any sandbox is started.
+- Custom secrets become environment variables in the conversation.
+
+### Settings surface
 
 - `GET/POST /api/v1/settings`
-- `GET /api/v1/settings/agent-schema`
-- `GET /api/v1/settings/conversation-schema`
-- `GET/POST/PUT/DELETE /api/v1/secrets`
+- `GET /api/v1/settings/agent-schema`, `GET /api/v1/settings/conversation-schema` (served from the SDK, for rendering a settings UI)
+- LLM profiles:
+  - `GET /api/v1/settings/profiles`
+  - `GET/POST/DELETE /api/v1/settings/profiles/{name}`
+  - `POST /api/v1/settings/profiles/{name}/activate`
+  - `POST /api/v1/settings/profiles/{name}/rename`
+- Secrets:
+  - `GET/POST /api/v1/secrets`, `PUT/DELETE /api/v1/secrets/{name}`
+  - `POST/DELETE /api/v1/secrets/provider-tokens/{provider}`
 
-MCP servers are stored only as opaque `agent_settings.mcp_config` data in this temporary compatibility store. Long-term MCP config should be owned by Agent Canvas + agent-server profiles/settings, not by app_server.
+Start a conversation with a one-off LLM override by passing `{"llm_profile": "<name>"}`; the override is not persisted.

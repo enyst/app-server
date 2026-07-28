@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from conftest import assert_uuid
+from conftest import TEST_LLM_API_KEY, TEST_MODEL, assert_uuid
 
 
 def _start_payload() -> dict:
+    """A start request as Agent Canvas sends it.
+
+    Agent configuration is *not* in the body — it comes from persisted
+    settings. The body only carries the message and per-conversation overrides.
+    """
     return {
         "initial_message": {"role": "user", "content": [{"type": "text", "text": "hello"}], "run": True},
-        "agent_settings": {"llm": {"model": "test-model", "api_key": "secret"}},
-        "conversation_settings": {"max_iterations": 5},
-        "secrets": {"TOKEN": "value"},
-        "workspace": {"kind": "LocalWorkspace", "working_dir": "/workspace/project"},
+        "max_iterations": 5,
+        "workspace": {"working_dir": "/workspace/project"},
     }
 
 
@@ -21,10 +24,13 @@ def test_start_conversation_creates_runtime_conversation(client, authed_headers,
     conversation_id = task["app_conversation_id"]
     assert_uuid(conversation_id)
 
+    # The runtime request is built from persisted settings, not the body.
     runtime_request = fake_agent_server.state.conversations[conversation_id]
-    assert runtime_request["agent_settings"]["llm"]["model"] == "test-model"
-    assert runtime_request["conversation_settings"]["max_iterations"] == 5
-    assert runtime_request["secrets"]["TOKEN"] == "value"
+    assert runtime_request["agent"]["llm"]["model"] == TEST_MODEL
+    assert runtime_request["agent"]["llm"]["api_key"] == TEST_LLM_API_KEY
+    assert runtime_request["max_iterations"] == 5
+    assert runtime_request["workspace"]["working_dir"] == "/workspace/project"
+    assert runtime_request["initial_message"]["content"][0]["text"] == "hello"
 
     batch = client.get(
         "/api/v1/app-conversations",
@@ -67,11 +73,13 @@ def test_send_message_uses_app_server_gateway(client, authed_headers, fake_agent
 def test_app_conversation_state_persists_across_app_restart(
     fake_agent_server, tmp_path, authed_headers
 ):
+    from conftest import seed_settings
     from fastapi.testclient import TestClient
 
     from app_server.app import create_app
     from app_server.config import AppServerConfig
 
+    seed_settings(tmp_path)
     config = AppServerConfig(
         session_api_keys=["app-secret"],
         state_dir=tmp_path,

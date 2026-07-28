@@ -7,7 +7,7 @@ name = "minimal-openhands-app-server"
 version = "0.1.0"
 description = "Minimal OpenHands app_server control plane for Agent Canvas and agent-server runtimes"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"  # openhands-sdk requires 3.12+
 license = "MIT"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -16,6 +16,11 @@ dependencies = [
   "uvicorn[standard]>=0.30,<1",
   "docker>=7,<8",
   "websockets>=13,<16",
+  # Source of truth for the agent-server wire format: Settings are stored as
+  # SDK AgentSettings/ConversationSettings and turned into a
+  # StartConversationRequest at conversation start. Keep in lockstep with the
+  # agent-server image tag in config.py.
+  "openhands-sdk==1.38.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +39,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

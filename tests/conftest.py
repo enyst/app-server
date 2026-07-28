@@ -13,9 +13,13 @@ from fastapi.testclient import TestClient
 
 from app_server.app import create_app
 from app_server.config import AppServerConfig
+from app_server.settings import Settings
+from app_server.state import AppState
 
 RUNTIME_KEY = "runtime-secret"
 APP_KEY = "app-secret"
+TEST_MODEL = "anthropic/claude-sonnet-4-5"
+TEST_LLM_API_KEY = "sk-test-llm-key"
 
 
 def _free_port() -> int:
@@ -153,8 +157,46 @@ def fake_agent_server() -> Iterator[RunningServer]:
     thread.join(timeout=5)
 
 
+def seed_settings(state_dir, **overrides) -> Settings:
+    """Persist a minimal usable Settings so conversations can start.
+
+    Conversation start refuses to run without a configured LLM, so every test
+    that opens a conversation needs this.
+    """
+    settings = Settings(
+        agent_settings={
+            "llm": {
+                "model": TEST_MODEL,
+                "api_key": TEST_LLM_API_KEY,
+                "usage_id": "agent",
+            }
+        },
+        **overrides,
+    )
+    AppState(state_dir).save_settings(settings)
+    return settings
+
+
+@pytest.fixture
+def unconfigured_client(fake_agent_server: RunningServer, tmp_path) -> Iterator[TestClient]:
+    """A client whose state dir has no persisted settings."""
+    app = create_app(
+        AppServerConfig(
+            session_api_keys=[APP_KEY],
+            state_dir=tmp_path,
+            static_agent_server_url=fake_agent_server.base_url,
+            static_agent_server_session_key=RUNTIME_KEY,
+            public_base_url="http://app-server.test",
+            enable_websocket_gateway=True,
+        )
+    )
+    with TestClient(app) as test_client:
+        yield test_client
+
+
 @pytest.fixture
 def client(fake_agent_server: RunningServer, tmp_path) -> Iterator[TestClient]:
+    seed_settings(tmp_path)
     app = create_app(
         AppServerConfig(
             session_api_keys=[APP_KEY],

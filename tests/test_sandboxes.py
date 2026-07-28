@@ -44,11 +44,13 @@ class FakeSandboxProvider:
 
 
 def test_app_conversation_uses_sandbox_provider(fake_agent_server, tmp_path, authed_headers):
+    from conftest import seed_settings
     from fastapi.testclient import TestClient
 
     from app_server.app import create_app
     from app_server.config import AppServerConfig
 
+    seed_settings(tmp_path)
     provider = FakeSandboxProvider(fake_agent_server.base_url)
     app = create_app(
         AppServerConfig(
@@ -139,11 +141,13 @@ class WaitingSandboxProvider:
 def test_app_conversation_waits_for_sandbox_readiness(
     fake_agent_server, tmp_path, authed_headers
 ):
+    from conftest import seed_settings
     from fastapi.testclient import TestClient
 
     from app_server.app import create_app
     from app_server.config import AppServerConfig
 
+    seed_settings(tmp_path)
     provider = WaitingSandboxProvider(fake_agent_server.base_url)
     app = create_app(
         AppServerConfig(session_api_keys=["app-secret"], state_dir=tmp_path),

@@ -10,6 +10,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, sta
 
 from .auth import auth_middleware, authorize_websocket
 from .config import AppServerConfig
+from .conversation_start import build_start_request
 from .models import (
     AGENT_SERVER,
     AppConversation,
@@ -23,8 +24,8 @@ from .models import (
 )
 from .runtime import proxy_request, require_running, runtime_conversation_url, runtime_headers
 from .sandbox import DockerSandboxService, ExposedPort, SandboxSpec
+from .settings_router import build_settings_router
 from .state import AppState
-from .temporary_settings import build_temporary_router
 
 
 def _require_static_agent_server(config: AppServerConfig) -> Sandbox:
@@ -39,9 +40,7 @@ def _require_static_agent_server(config: AppServerConfig) -> Sandbox:
     )
 
 
-def _get_conversation_and_sandbox(
-    state: AppState, conversation_id: str
-) -> tuple[AppConversation, Sandbox]:
+def _get_conversation_and_sandbox(state: AppState, conversation_id: str) -> tuple[AppConversation, Sandbox]:
     normalized = normalize_uuid(conversation_id)
     conversation = state.conversations.get(normalized)
     if not conversation:
@@ -54,13 +53,6 @@ def _get_conversation_and_sandbox(
 
 def _conversation_response(conversation: AppConversation, sandbox: Sandbox) -> AppConversation:
     return conversation.model_copy(update={"sandbox_status": sandbox.status})
-
-
-def _build_start_payload(body: dict[str, Any], conversation_id: str) -> dict[str, Any]:
-    payload = dict(body)
-    payload["conversation_id"] = conversation_id
-    payload.setdefault("workspace", {"kind": "LocalWorkspace", "working_dir": "workspace/project"})
-    return payload
 
 
 async def _start_runtime_conversation(
@@ -121,7 +113,6 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             "websocket_gateway": config.enable_websocket_gateway,
         }
 
-
     @app.get("/api/v1/sandbox-specs/search")
     async def search_sandbox_specs() -> dict[str, Any]:
         return {"items": [spec.model_dump() for spec in _sandbox_specs(config)], "next_page_id": None}
@@ -172,6 +163,10 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
 
     @app.post("/api/v1/app-conversations")
     async def start_app_conversation(body: dict[str, Any] = Body(default_factory=dict)):
+        # Build the request before starting a sandbox: an unconfigured LLM is a
+        # 400, and doing it in this order avoids leaking a container on that path.
+        conversation_id = str(uuid.uuid4())
+        payload = build_start_request(state.load_settings(), state.load_secrets(), body, conversation_id)
         sandbox = (
             await sandbox_service.start_sandbox(body.get("sandbox_spec_id"))
             if sandbox_service is not None
@@ -181,8 +176,6 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
             sandbox = await sandbox_service.wait_for_sandbox_running(sandbox.id)
         state.sandboxes[sandbox.id] = sandbox
         state.save_runtime_state()
-        conversation_id = str(uuid.uuid4())
-        payload = _build_start_payload(body, conversation_id)
         runtime = await _start_runtime_conversation(config, sandbox, payload)
         status_value = runtime.get("status", "idle")
         conversation = AppConversation(
@@ -212,8 +205,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
     @app.get("/api/v1/app-conversations/search", response_model=AppConversationPage)
     async def search_app_conversations() -> AppConversationPage:
         items = [
-            _conversation_response(conv, state.sandboxes[conv.sandbox_id])
-            for conv in state.conversations.values()
+            _conversation_response(conv, state.sandboxes[conv.sandbox_id]) for conv in state.conversations.values()
         ]
         return AppConversationPage(items=items)
 
@@ -309,9 +301,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
     @app.post("/api/conversations/{conversation_id}/events")
     async def send_event_proxy(request: Request, conversation_id: str):
         _, sandbox = _get_conversation_and_sandbox(state, conversation_id)
-        return await proxy_request(
-            request, sandbox, f"/api/conversations/{normalize_uuid(conversation_id)}/events"
-        )
+        return await proxy_request(request, sandbox, f"/api/conversations/{normalize_uuid(conversation_id)}/events")
 
     @app.post("/api/conversations/{conversation_id}/ask_agent")
     async def ask_agent(request: Request, conversation_id: str):
@@ -362,7 +352,7 @@ def create_app(config: AppServerConfig | None = None, sandbox_service=None) -> F
         url = _runtime_ws_url(sandbox, "/sockets/bash-events", query)
         await _tunnel_websocket(websocket, url)
 
-    app.include_router(build_temporary_router(state))
+    app.include_router(build_settings_router(state))
     return app
 
 
