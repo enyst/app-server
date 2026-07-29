@@ -18,6 +18,20 @@ python -m ruff check .
 python -m pytest
 ```
 
+The suite has two tiers. Unit tests run app_server against a fake agent-server;
+integration tests (marked `integration`) stand up a **real** `openhands-agent-server`
+subprocess and drive conversation start, the event proxy, and send-message
+through it — the only thing that proves the `StartConversationRequest` we build
+is schema-valid against the pinned runtime. Select a tier with:
+
+```bash
+python -m pytest -m "not integration"   # fast, no subprocess
+python -m pytest -m integration         # real agent-server
+```
+
+Integration tests skip automatically if `openhands-agent-server` is not
+installed; they need no LLM API key (conversations are created idle).
+
 Run against an existing agent-server runtime:
 
 ```bash

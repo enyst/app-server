@@ -8,4 +8,4 @@
 - Never echo secret values back from a GET. Secrets are stripped from responses and restored from storage on write, so a `GET -> edit -> POST` round trip cannot erase them (`app_server/mcp_secrets.py`).
 - Prefer `X-Session-API-Key` auth for self-hosted app_server deployments. OAuth device flow is not required for the minimal self-hosted bridge unless a real durable auth service is added.
 - The app_server should orchestrate sandboxes and proxy/tunnel traffic; do not reimplement agent-server internals.
-- Validate with `python -m pytest` and `python -m ruff check .`.
+- Validate with `python -m pytest` and `python -m ruff check .`. Integration tests under `tests/integration/` (marked `integration`) boot a real agent-server subprocess; they pin `openhands-agent-server`/`openhands-tools` to the same version as `openhands-sdk` and prove the start-conversation payload is schema-valid against the real runtime. Keep all three versions in lockstep with the image tag in `config.py`.

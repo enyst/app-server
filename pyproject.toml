@@ -28,6 +28,12 @@ dev = [
   "pytest>=8,<9",
   "pytest-asyncio>=0.23,<2",
   "ruff>=0.8,<1",
+  # Integration tests stand up a real agent-server subprocess. Pinned in
+  # lockstep with openhands-sdk and the agent-server image tag in config.py.
+  # openhands-tools ships the tool implementations (e.g. libtmux) the runtime
+  # imports at startup.
+  "openhands-agent-server==1.38.0",
+  "openhands-tools==1.38.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -36,6 +42,9 @@ packages = ["app_server"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "integration: end-to-end tests that stand up a real agent-server subprocess (slow)",
+]
 
 [tool.ruff]
 line-length = 120
