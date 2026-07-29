@@ -224,6 +224,36 @@ def test_schemas_are_served_from_the_sdk(client, authed_headers):
     assert conversation_schema["sections"], "conversation schema should not be empty"
 
 
+def test_agent_schema_includes_verification_fields(client, authed_headers):
+    """Ported from upstream: the agent schema carries the critic/verification
+    section, and conversation-level fields stay out of it."""
+    schema = client.get("/api/v1/settings/agent-schema", headers=authed_headers).json()
+
+    section_keys = [s["key"] for s in schema["sections"]]
+    general = next(s for s in schema["sections"] if s["key"] == "general")
+    assert "enable_sub_agents" in [f["key"] for f in general["fields"]]
+
+    assert "verification" in section_keys
+    verification = next(s for s in schema["sections"] if s["key"] == "verification")
+    field_keys = [f["key"] for f in verification["fields"]]
+    assert "verification.critic_enabled" in field_keys
+    assert "verification.enable_iterative_refinement" in field_keys
+    # These belong to conversation settings, not agent settings.
+    assert "confirmation_mode" not in field_keys
+    assert "security_analyzer" not in field_keys
+
+
+def test_conversation_schema_shape(client, authed_headers):
+    schema = client.get("/api/v1/settings/conversation-schema", headers=authed_headers).json()
+
+    assert schema["model_name"] == "ConversationSettings"
+    assert [s["key"] for s in schema["sections"]] == ["general", "verification"]
+    verification = next(s for s in schema["sections"] if s["key"] == "verification")
+    field_keys = [f["key"] for f in verification["fields"]]
+    assert "confirmation_mode" in field_keys
+    assert "security_analyzer" in field_keys
+
+
 def _stored_settings(client):
     """Read settings straight off disk, bypassing the redacting GET."""
     from app_server.state import AppState
